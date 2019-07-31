@@ -83,40 +83,6 @@ class Trainer(object):
             log_scalar(train_writer, 'test_mae', test_mae, j+1)
             log_scalar(train_writer, 'test_mse', test_mse, j+1)
             
-
-        for j in trange(self.num_epochs, desc="Epochs: "):
-            train_iterator = train.get_iterator(train_loss)
-            for X, y in train_iterator:
-                #pdb.set_trace()
-                self.optim.zero_grad()
-                y_pred = self.model(Variable(torch.from_numpy(X)).cuda())
-                loss = self.l1(y_pred, Variable(torch.from_numpy(y).cuda()))
-                loss_val = np.asscalar(loss.data.cpu().numpy())
-                train_loss = 0.9*train_loss + 0.1*loss_val
-                loss.backward()
-                self.optim.step()
-                train_iterator.set_description(
-                    'Train loss: {0:.4f}'.format(train_loss))
-
-            test_mae, test_mse = self.evaluate(valid)
-            if test_mae < best_mae:
-                best_mae = test_mae
-                torch.save(self.model, self.out_dir + 'best_mae_model.pth')
-            if test_mse < best_mse:
-                best_mse = test_mse
-                torch.save(self.model, self.out_dir + 'best_mse_model.pth')
-
-            tqdm.write(
-                'After epoch {0} Test MAE: {1:0.6g} Best MAE: {2:0.6g} Test MSE: {3:0.6g} Best MSE: {4:0.6g} '
-                'Train Loss: {5:0.6f}'.format(
-                    j+1, test_mae, best_mae, test_mse, best_mse, train_loss))
-
-            self.visualize(valid)
-
-            log_scalar(train_writer, 'train_loss', train_loss, self.num_epochs+j+1)
-            log_scalar(train_writer, 'test_mae', test_mae, self.num_epochs+j+1)
-            log_scalar(train_writer, 'test_mse', test_mse, self.num_epochs+j+1)
-            
         return best_mae, best_mse        
     
     def evaluate(self, test):
@@ -174,7 +140,8 @@ if __name__ == '__main__':
     print('Running Task {0} with L = 2^{1}'.format(task_id, exp_id))
     
     # Load dataset
-    train = DataIterator(ddir+'data_{0}.mat'.format(exp_id), 128, shuffle=True)
+    batch_size = 64
+    train = DataIterator(ddir+'data_{0}.mat'.format(exp_id), batch_size, shuffle=True)
     valid = DataIterator(ddir+'val.mat', 128)
     test  = DataIterator(ddir+'test.mat', 128)
     assert train.d == valid.d and train.d == test.d, \
@@ -184,10 +151,10 @@ if __name__ == '__main__':
     with h5py.File(ddir+'truth.mat') as f:
         t = np.squeeze(f['X_parameter'][()])
         y = np.squeeze(f['Y'][()])
-    print 'Loaded dataset'
+    print('Loaded dataset')
     
     nb_epoch = 500 # np.max([1024*1024/train.L,100])
-    print train.d
+    print(train.d)
     t = Trainer(train.d, (t,y), nb_epoch, odir, odir+'logs/')
     a, b = t.fit(train, valid)
     t.model = torch.load(odir + 'best_mse_model.pth')
