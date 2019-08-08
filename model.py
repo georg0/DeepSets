@@ -37,12 +37,23 @@ class DeepSet(nn.Module):
             if callable(reset_op):
                 reset_op()
             
-    def forward(self, input):
-        x = input
+    def forward(self, X):
+        indices = X[:,1,0] #find before where the next sample starts:
+        indices = torch.cat( (indices[1:]-indices[:-1], torch.tensor([1.0]).cuda()) \
+                ).to(torch.uint8)
+        n_s = torch.cat( (torch.tensor([[0]]).cuda(), indices.nonzero() + 1) ) 
+        n_s = n_s[1:]-n_s[:-1] #number of samples (could maybe be passed to this function)
+
+        x = X[:,0,:]
         x = self.feature_extractor(x)
-        x = x.sum(dim=1)
-        x = self.regressor(x)
-        return x
+        #x = x.sum(dim=1) ###
+        x = x.cumsum(0) #Maybe one should implement a better thing here
+        y = torch.cat( (torch.zeros([1, x.shape[1]], dtype=torch.float).cuda(), \
+            x[indices]), dim=0 )
+        y = y[1:,:] - y[:-1,:]
+        y = y/(n_s.to(torch.float)) #normalize the sum
+        y = self.regressor(y)
+        return y
 
     def __repr__(self):
         return self.__class__.__name__ + '(' \

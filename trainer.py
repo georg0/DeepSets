@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.autograd import Variable
+#from torch.autograd import Variable (deprecated)
 
 import tensorflow as tf
 
@@ -54,8 +54,8 @@ class Trainer(object):
             for X, y in train_iterator:
                 #pdb.set_trace()
                 self.optim.zero_grad()
-                y_pred = self.model(Variable(torch.from_numpy(X)).cuda())
-                loss = self.l2(y_pred, Variable(torch.from_numpy(y).cuda()))
+                y_pred = self.model(torch.from_numpy(X).cuda())
+                loss = self.l2(y_pred, torch.from_numpy(y).cuda())
                 loss_val = np.asscalar(loss.data.cpu().numpy())
                 train_loss = 0.9*train_loss + 0.1*loss_val
                 loss.backward()
@@ -92,15 +92,15 @@ class Trainer(object):
         test_iterator = test.get_iterator()
         for X, y in test_iterator:
             counts += 1
-            y_pred = self.model(Variable(torch.from_numpy(X)).cuda())
-            sum_mae += self.l1(y_pred, Variable(torch.from_numpy(y)).cuda()).data.cpu().numpy()
-            sum_mse += self.l2(y_pred, Variable(torch.from_numpy(y)).cuda()).data.cpu().numpy()
+            y_pred = self.model(torch.from_numpy(X).cuda())
+            sum_mae += self.l1(y_pred, torch.from_numpy(y).cuda()).data.cpu().numpy()
+            sum_mse += self.l2(y_pred, torch.from_numpy(y).cuda()).data.cpu().numpy()
         return np.asscalar(sum_mae/counts), np.asscalar(sum_mse/counts)
         
     def predict(self, test):
         y_preds = []
         for X, y in test.next_batch():
-            y_pred = self.model(Variable(torch.from_numpy(X)).cuda())
+            y_pred = self.model(torch.from_numpy(X).cuda())
             y_preds.append(y_pred.data.cpu().numpy())
         return np.concatenate(y_preds)
         
@@ -113,7 +113,7 @@ class Trainer(object):
         plt.figure(figsize=(10*scale, 7.5*scale))
 
         plt.plot(self.truth[0], self.truth[1])
-        plt.plot(iterator.t, y_pred, 'x')
+        plt.plot(iterator.y, y_pred, 'x')
         plt.xlabel('Index')
         plt.ylabel('Statistics')
         plt.legend(['Truth', 'DeepSet'], loc=3, fontsize=12)
@@ -125,11 +125,11 @@ class Trainer(object):
 if __name__ == '__main__':
     
     # Task id
-    task_id = sys.argv[1]
-    exp_id = sys.argv[2]
+    # task_id = sys.argv[1]
 
-    ddir = 'generator/data/task{0}/'.format(task_id)
-    odir = ddir+'exp{0}/'.format(exp_id)
+    ddir = '../'
+    odir = '../out/'
+    #odir = ddir+'exp{0}/'.format(exp_id)
     if not os.path.exists(odir):
         os.makedirs(odir)
     
@@ -137,25 +137,25 @@ if __name__ == '__main__':
     f2 = open(odir + 'stderr.txt', 'w')
     sys.stdout = f1
     sys.stderr = f2
-    print('Running Task {0} with L = 2^{1}'.format(task_id, exp_id))
+    print('Running Task') # {0} with L = 2^{1}'.format(task_id, exp_id))
     
     # Load dataset
     batch_size = 64
-    train = DataIterator(ddir+'data_{0}.mat'.format(exp_id), batch_size, shuffle=True)
-    valid = DataIterator(ddir+'val.mat', 128)
-    test  = DataIterator(ddir+'test.mat', 128)
+    train = DataIterator(ddir+'train.hdf5', batch_size, shuffle=True)
+    valid = DataIterator(ddir+'valid.hdf5', 32)
+    test  = DataIterator(ddir+'test.hdf5', 32)
     assert train.d == valid.d and train.d == test.d, \
             'Dimensions of train, valid, and test do not match!'
 
-    # Load truth from Matlab
-    with h5py.File(ddir+'truth.mat') as f:
-        t = np.squeeze(f['X_parameter'][()])
-        y = np.squeeze(f['Y'][()])
+    # Load truth (this is in fact a straight x=y line currently
+    with h5py.File(ddir+'truth.hdf5') as f:
+        y = np.squeeze(f['q'][()])
+    
     print('Loaded dataset')
     
     nb_epoch = 500 # np.max([1024*1024/train.L,100])
     print(train.d)
-    t = Trainer(train.d, (t,y), nb_epoch, odir, odir+'logs/')
+    t = Trainer(train.d, (y,y), nb_epoch, odir, odir+'logs/')
     a, b = t.fit(train, valid)
     t.model = torch.load(odir + 'best_mse_model.pth')
     a, b = t.evaluate(test)
